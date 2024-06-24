@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>World Map Game</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+        #map-container {
+            width: 100%;
+            height: 100%;
+        }
+        #world-map {
+            width: 100%;
+            height: 100%;
+        }
+        #world-map path {
+            fill: #ccc !important;
+            stroke: #fff;
+            stroke-width: 0.5;
+            transition: fill 0.3s;
+        }
+        #world-map path:hover {
+            fill: #3498db !important;
+            cursor: pointer;
+        }
+        #world-map path.highlight {
+            fill: #e74c3c !important;
+        }
+        #score-container {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        #zoom-controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #zoom-controls button {
+            font-size: 18px;
+            margin: 0 5px;
+            cursor: pointer;
+        }
+        #message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            font-size: 18px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="score-container">
+            <h2>World Map Game</h2>
+            <p>Find: <span id="target-country"></span></p>
+            <p>Current Score: <span id="current-score">0</span></p>
+            <p>High Score: <span id="high-score">0</span></p>
+        </div>
+        <div id="map-container">
+            <svg id="world-map"></svg>
+        </div>
+        <div id="zoom-controls">
+            <button id="zoom-in">+</button>
+            <button id="zoom-out">-</button>
+        </div>
+        <div id="message"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <script>
+        const svg = d3.select("#world-map");
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        let currentScore = 0;
+        let highScore = localStorage.getItem('highScore') || 0;
+        let targetCountry = "";
+        const countries = [];
+        const messageDuration = 5000; // 5 seconds
+
+        document.getElementById("high-score").textContent = highScore;
+
+        const projection = d3.geoMercator()
+            .scale(170)
+            .center([0, 20])
+            .translate([width / 2, height / 2]);
+        const path = d3.geoPath().projection(projection);
+
+        const zoom = d3.zoom()
+            .scaleExtent([1, 8])
+            .on("zoom", zoomed);
+
+        svg.call(zoom);
+
+        function zoomed(event) {
+            svg.selectAll("path")
+                .attr("transform", event.transform);
+        }
+
+        d3.select("#zoom-in").on("click", () => {
+            svg.transition().call(zoom.scaleBy, 2);
+        });
+
+        d3.select("#zoom-out").on("click", () => {
+            svg.transition().call(zoom.scaleBy, 0.5);
+        });
+
+        // Load world map data
+        d3.json("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson").then(function(data) {
+            // Draw the map
+            svg.selectAll("path")
+                .data(data.features)
+                .enter()
+                .append("path")
+                .attr("d", path)
+                .attr("fill", "#ccc")
+                .attr("stroke", "#fff")
+                .attr("stroke-width", 0.5)
+                .on("click", handleCountryClick);
+
+            // Populate countries array
+            data.features.forEach(feature => {
+                countries.push(feature.properties.name);
+            });
+
+            // Start the game
+            newRound();
+        });
+
+        function handleCountryClick(event, d) {
+            if (d.properties.name === targetCountry) {
+                currentScore++;
+                if (currentScore > highScore) {
+                    highScore = currentScore;
+                    localStorage.setItem('highScore', highScore);
+                    document.getElementById("high-score").textContent = highScore;
+                }
+                showMessage("Correct! Well done!", "green");
+                setTimeout(() => {
+                    hideMessage();
+                    newRound();
+                }, messageDuration);
+            } else {
+                currentScore = 0;
+                showMessage(`Incorrect. The correct country was ${targetCountry}.`, "red");
+                highlightCorrectCountry();
+                setTimeout(() => {
+                    hideMessage();
+                    resetHighlight();
+                    newRound();
+                }, messageDuration);
+            }
+            document.getElementById("current-score").textContent = currentScore;
+        }
+
+        function newRound() {
+            targetCountry = countries[Math.floor(Math.random() * countries.length)];
+            document.getElementById("target-country").textContent = targetCountry;
+        }
+
+        function highlightCorrectCountry() {
+            svg.selectAll("path")
+                .classed("highlight", false)
+                .attr("fill", null);  // Remove inline fill
+            
+            svg.selectAll("path")
+                .filter(function(d) { return d.properties.name === targetCountry; })
+                .classed("highlight", true)
+                .attr("fill", "#e74c3c");  // Set inline fill as well
+        }
+
+        function resetHighlight() {
+            svg.selectAll("path")
+                .classed("highlight", false)
+                .attr("fill", null);  // Remove inline fill
+        }
+
+        function showMessage(text, color) {
+            const message = document.getElementById("message");
+            message.textContent = text;
+            message.style.color = color;
+            message.style.display = "block";
+        }
+
+        function hideMessage() {
+            document.getElementById("message").style.display = "none";
+        }
+
+        // Adjust map size on window resize
+        window.addEventListener('resize', function() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            svg.attr("width", width).attr("height", height);
+            projection.translate([width / 2, height / 2]);
+            svg.selectAll("path").attr("d", path);
+        });
+    </script>
+</body>
+</html>
